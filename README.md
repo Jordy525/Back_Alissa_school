@@ -50,7 +50,7 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret
 
 # URLs
 BASE_URL=http://localhost:3000
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=https://front-alissa-school-seven.vercel.app
 ```
 
 ### 4. Initialisation de la base de données

@@ -30,7 +30,8 @@ const PORT = process.env.PORT || 3000;
 // Configuration CORS
 const corsOptions = {
   origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
+    process.env.FRONTEND_URL || 'https://front-alissa-school-seven.vercel.app',
+    'https://front-alissa-school-seven.vercel.app', // URL de production
     'http://localhost:8080', // Port alternatif pour le frontend
     'http://localhost:3000', // Port du backend (pour les tests)
     'http://127.0.0.1:5173',

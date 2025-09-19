@@ -33,6 +33,8 @@ const corsOptions = {
   origin: [
     process.env.FRONTEND_URL || 'https://front-alissa-school-seven.vercel.app',
     'https://front-alissa-school-seven.vercel.app', // URL de production
+    'https://front-alissa-school-446cs1h39-jordys-projects-d5468569.vercel.app', // URL Vercel actuelle
+    /^https:\/\/front-alissa-school.*\.vercel\.app$/, // Pattern pour toutes les URLs Vercel
     'http://localhost:8080', // Port alternatif pour le frontend
     'http://localhost:3000', // Port du backend (pour les tests)
     'http://127.0.0.1:5173',
@@ -48,6 +50,36 @@ const corsOptions = {
   exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
   maxAge: 86400 // 24 heures
 };
+
+// Middleware CORS personnalisé pour gérer les requêtes preflight
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Vérifier si l'origine est autorisée
+  const isAllowedOrigin = corsOptions.origin.some(allowedOrigin => {
+    if (typeof allowedOrigin === 'string') {
+      return allowedOrigin === origin;
+    } else if (allowedOrigin instanceof RegExp) {
+      return allowedOrigin.test(origin);
+    }
+    return false;
+  });
+  
+  if (isAllowedOrigin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  }
+  
+  // Gérer les requêtes preflight
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  
+  next();
+});
 
 // Middleware de sécurité
 app.use(helmet({

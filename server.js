@@ -23,6 +23,7 @@ const youtubeRoutes = require('./routes/youtube');
 const gamificationRoutes = require('./routes/gamification');
 const progressRoutes = require('./routes/progress');
 const chatRoutes = require('./routes/chat');
+const documentRoutes = require('./routes/documents');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -125,6 +126,7 @@ app.use('/api/youtube', youtubeRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/documents', documentRoutes);
 
 // Routes pour le nouveau frontend
 app.use('/api/frontend', require('./routes/frontend'));

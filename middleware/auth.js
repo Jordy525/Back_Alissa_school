@@ -154,6 +154,58 @@ const requireRole = (roles) => {
   };
 };
 
+// Middleware spécifique pour les administrateurs
+const requireAdmin = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          message: 'Authentification requise'
+        }
+      });
+    }
+
+    // Récupérer le rôle de l'utilisateur depuis la base de données
+    const users = await query(
+      'SELECT role FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
+    if (users.length === 0) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          message: 'Utilisateur non trouvé'
+        }
+      });
+    }
+
+    const userRole = users[0].role || 'student';
+    
+    if (!['admin', 'super_admin'].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          message: 'Accès administrateur requis'
+        }
+      });
+    }
+
+    // Ajouter le rôle à l'utilisateur
+    req.user.role = userRole;
+    next();
+  } catch (error) {
+    logger.logError(error, { middleware: 'requireAdmin' });
+    return res.status(500).json({
+      success: false,
+      error: {
+        message: 'Erreur de vérification des permissions'
+      }
+    });
+  }
+};
+
 // Middleware pour vérifier la propriété d'une ressource
 const requireOwnership = (resourceUserIdField = 'user_id') => {
   return (req, res, next) => {
@@ -201,6 +253,7 @@ module.exports = {
   authenticateToken,
   requireClassSelection,
   requireRole,
+  requireAdmin,
   requireOwnership,
   optionalAuth
 };

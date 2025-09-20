@@ -25,7 +25,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     const existingUsers = await query(
       `SELECT id, email, name, avatar_url, google_id, total_points, level, 
               phone_number, age_range, classe, matieres, langue_gabonaise, 
-              created_at, last_login_at
+              role, created_at, last_login_at
        FROM users WHERE google_id = ? OR email = ?`,
       [profile.id, profile.emails[0].value]
     );
@@ -184,7 +184,7 @@ router.post('/register', validateRegistration, asyncHandler(async (req, res) => 
 
     // Récupération des données utilisateur
     const users = await query(
-      'SELECT id, email, name, avatar_url, selected_class, total_points, level, created_at FROM users WHERE id = ?',
+      'SELECT id, email, name, avatar_url, selected_class, total_points, level, role, created_at FROM users WHERE id = ?',
       [userId]
     );
 
@@ -222,7 +222,7 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
   try {
     // Récupération de l'utilisateur
     const users = await query(
-      'SELECT id, email, password_hash, name, avatar_url, selected_class, total_points, level, created_at FROM users WHERE email = ? AND deleted_at IS NULL',
+      'SELECT id, email, password_hash, name, avatar_url, selected_class, total_points, level, role, created_at FROM users WHERE email = ? AND deleted_at IS NULL',
       [email]
     );
 

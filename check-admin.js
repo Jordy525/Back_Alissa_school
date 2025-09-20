@@ -17,7 +17,7 @@ async function checkAdmin() {
       
       // Vérifier le hash du mot de passe
       if (admin[0].password_hash === '$2a$12$vEMYb7V1e1mbAk3wZHN2x.Dm0ISGeVZ/5GvMaeXHo0KsJPfspJdYK') {
-        console.log('✅ Hash du mot de passe correct (admin123)');
+        console.log('✅ Hash du mot de passe correct');
       } else {
         console.log('❌ Hash du mot de passe incorrect');
         console.log(`   Hash actuel: ${admin[0].password_hash}`);

@@ -212,12 +212,24 @@ router.post('/login', asyncHandler(async (req, res) => {
 
     logger.logEvent('user_logged_in', { userId: user.id, email });
 
-    // Déterminer le type de redirection selon le rôle
+    // Vérifier dans la table admins au lieu du champ role
     let redirectPath = '/dashboard';
-    if (user.role === 'admin' || user.role === 'super_admin') {
+    let isAdmin = false;
+    try {
+      const [admins] = await query(
+        'SELECT id FROM admins WHERE user_id = ? OR email = ? LIMIT 1',
+        [user.id, user.email]
+      );
+      isAdmin = Array.isArray(admins) ? admins.length > 0 : admins && admins.id;
+    } catch (e) {
+      // En cas d'erreur de table manquante, rester compatible
+      isAdmin = (user.role === 'admin' || user.role === 'super_admin');
+    }
+
+    if (isAdmin) {
       redirectPath = '/admin/dashboard';
-    } else if (user.role === 'student') {
-      // Pour les étudiants, vérifier s'ils ont déjà sélectionné leur classe
+    } else {
+      // Pour les non-admins, vérifier s'ils ont déjà sélectionné leur classe
       if (!user.classe) {
         redirectPath = '/choose-class';
       } else {
@@ -240,7 +252,8 @@ router.post('/login', asyncHandler(async (req, res) => {
           classe: user.classe,
           matieres: user.matieres ? JSON.parse(user.matieres) : [],
           langueGabonaise: user.langue_gabonaise,
-          role: user.role || 'student',
+          role: user.role || (isAdmin ? 'admin' : 'student'),
+          isAdmin,
           isConnected: true,
           createdAt: user.created_at,
           lastLoginAt: user.last_login_at

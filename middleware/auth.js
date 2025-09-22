@@ -168,33 +168,22 @@ const requireAdmin = async (req, res, next) => {
     }
 
     // Récupérer le rôle de l'utilisateur depuis la base de données
-    const users = await query(
-      'SELECT role FROM users WHERE id = ?',
+    // Vérifier dans la table admins plutôt que le champ role
+    const admins = await query(
+      'SELECT id FROM admins WHERE user_id = ? LIMIT 1',
       [req.user.id]
     );
 
-    if (users.length === 0) {
+    if (!admins || admins.length === 0) {
       return res.status(401).json({
-        success: false,
-        error: {
-          message: 'Utilisateur non trouvé'
-        }
-      });
-    }
-
-    const userRole = users[0].role || 'student';
-    
-    if (!['admin', 'super_admin'].includes(userRole)) {
-      return res.status(403).json({
         success: false,
         error: {
           message: 'Accès administrateur requis'
         }
       });
     }
-
-    // Ajouter le rôle à l'utilisateur
-    req.user.role = userRole;
+    // Marquer admin
+    req.user.role = 'admin';
     next();
   } catch (error) {
     logger.logError(error, { middleware: 'requireAdmin' });

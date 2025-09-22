@@ -163,7 +163,7 @@ router.delete('/students/:id', authenticateToken, requireAdmin, async (req, res)
     const { id } = req.params;
     
     await db.execute(
-      'UPDATE users SET deleted_at = NOW() WHERE id = ? AND role = "student"',
+      'UPDATE users SET deleted_at = NOW() WHERE id = ?',
       [id]
     );
     
@@ -430,8 +430,9 @@ router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
         COUNT(CASE WHEN classe = 'seconde' THEN 1 END) as classe_seconde,
         COUNT(CASE WHEN classe = 'premiere' THEN 1 END) as classe_premiere,
         COUNT(CASE WHEN classe = 'terminale' THEN 1 END) as classe_terminale
-      FROM users 
-      WHERE role = 'student' AND deleted_at IS NULL
+      FROM users u
+      LEFT JOIN admins a ON a.user_id = u.id
+      WHERE a.id IS NULL AND u.deleted_at IS NULL
     `);
     
     // Statistiques des documents

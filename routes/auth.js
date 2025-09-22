@@ -222,7 +222,7 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
   try {
     // Récupération de l'utilisateur
     const users = await query(
-      'SELECT id, email, password_hash, name, avatar_url, selected_class, total_points, level, role, created_at FROM users WHERE email = ? AND deleted_at IS NULL',
+      'SELECT id, email, password_hash, name, avatar_url, selected_class, classe, total_points, level, role, created_at FROM users WHERE email = ? AND deleted_at IS NULL',
       [email]
     );
 
@@ -264,14 +264,31 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
     // Suppression du hash du mot de passe de la réponse
     delete user.password_hash;
 
-    logger.logEvent('user_login', { userId: user.id, email });
+    // Déterminer le type de redirection selon le rôle
+    let redirectPath = '/dashboard';
+    if (user.role === 'admin' || user.role === 'super_admin') {
+      redirectPath = '/admin/dashboard';
+    } else if (user.role === 'student') {
+      // Pour les étudiants, vérifier s'ils ont déjà sélectionné leur classe
+      if (!user.classe && !user.selected_class) {
+        redirectPath = '/choose-class';
+      } else {
+        redirectPath = '/dashboard';
+      }
+    }
+
+    logger.logEvent('user_login', { userId: user.id, email, role: user.role });
 
     res.json({
       success: true,
       message: 'Connexion réussie',
       data: {
-        user,
-        token
+        user: {
+          ...user,
+          role: user.role || 'student'
+        },
+        token,
+        redirectPath
       }
     });
   } catch (error) {

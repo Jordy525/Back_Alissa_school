@@ -48,45 +48,64 @@ const upload = multer({
 // GET /api/admin/students - Récupérer tous les élèves
 router.get('/students', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { page = 1, limit = 20, search = '', classe = '', role = 'student' } = req.query;
+    console.log('👥 Récupération des élèves...', req.query);
+    
+    const { page = 1, limit = 20, search = '', classe = '' } = req.query;
     const offset = (page - 1) * limit;
     
-    let whereClause = 'role = ? AND deleted_at IS NULL';
-    let params = [role];
+    // Approche simplifiée pour éviter les problèmes de collation
+    let whereClause = `u.deleted_at IS NULL`;
+    let params = [];
     
     if (search) {
-      whereClause += ' AND (name LIKE ? OR email LIKE ?)';
+      whereClause += ' AND (u.name LIKE ? OR u.email LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
     
     if (classe) {
-      whereClause += ' AND classe = ?';
+      whereClause += ' AND u.classe = ?';
       params.push(classe);
     }
     
-    const query = `
+    // Récupérer tous les utilisateurs avec une sous-requête pour exclure les admins
+    const allUsersQuery = `
       SELECT 
-        id, email, name, avatar_url, classe, selected_class, 
-        total_points, level, created_at, last_login_at,
-        JSON_EXTRACT(selected_subjects, '$') as selected_subjects
-      FROM users 
+        u.id, u.email, u.name, u.avatar_url, u.classe, u.selected_class, 
+        u.total_points, u.level, u.created_at, u.last_login_at,
+        u.matieres as selected_subjects
+      FROM users u
       WHERE ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
+      AND u.id NOT IN (
+        SELECT COALESCE(user_id, '') FROM admins WHERE user_id IS NOT NULL
+      )
+      AND u.email NOT IN (
+        SELECT COALESCE(email, '') FROM admins WHERE email IS NOT NULL
+      )
+      ORDER BY u.created_at DESC
     `;
     
-    params.push(parseInt(limit), offset);
-    const [students] = await db.execute(query, params);
+    const allStudents = await query(allUsersQuery, params);
     
-    // Compter le total pour la pagination
-    const countQuery = `SELECT COUNT(*) as total FROM users WHERE ${whereClause}`;
-    const [countResult] = await db.execute(countQuery, params.slice(0, -2));
-    const total = countResult[0].total;
+    // Pagination manuelle
+    const total = allStudents.length;
+    const students = allStudents.slice(offset, offset + parseInt(limit));
+    
+    // Parser les matières JSON
+    const studentsWithParsedSubjects = students.map(student => ({
+      ...student,
+      selected_subjects: student.selected_subjects ? 
+        (typeof student.selected_subjects === 'string' ? 
+          JSON.parse(student.selected_subjects) : 
+          student.selected_subjects
+        ) : []
+    }));
+    
+    console.log(`✅ ${students.length} élèves récupérés sur ${total} total`);
     
     res.json({
       success: true,
       data: {
-        students,
+        students: studentsWithParsedSubjects,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -96,14 +115,21 @@ router.get('/students', authenticateToken, requireAdmin, async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('❌ Erreur lors de la récupération des élèves:', error);
     logger.error('Erreur lors de la récupération des élèves:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    res.status(500).json({ 
+      success: false, 
+      error: { message: 'Erreur serveur' },
+      details: error.message 
+    });
   }
 });
 
 // PUT /api/admin/students/:id - Modifier un élève
 router.put('/students/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    console.log('✏️ Modification élève:', req.params.id, req.body);
+    
     const { id } = req.params;
     const { name, email, classe, selected_subjects, total_points, level } = req.body;
     
@@ -123,7 +149,7 @@ router.put('/students/:id', authenticateToken, requireAdmin, async (req, res) =>
       params.push(classe);
     }
     if (selected_subjects) {
-      updateFields.push('selected_subjects = ?');
+      updateFields.push('matieres = ?');
       params.push(JSON.stringify(selected_subjects));
     }
     if (total_points !== undefined) {
@@ -136,15 +162,19 @@ router.put('/students/:id', authenticateToken, requireAdmin, async (req, res) =>
     }
     
     if (updateFields.length === 0) {
-      return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour' });
+      return res.status(400).json({ 
+        success: false, 
+        error: { message: 'Aucune donnée à mettre à jour' }
+      });
     }
     
     updateFields.push('updated_at = NOW()');
     params.push(id);
     
-    const query = `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`;
-    await db.execute(query, params);
+    const updateQuery = `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`;
+    await query(updateQuery, params);
     
+    console.log('✅ Élève modifié avec succès:', id);
     logger.info(`Élève modifié: ${id} par ${req.user.email}`);
     
     res.json({
@@ -152,30 +182,59 @@ router.put('/students/:id', authenticateToken, requireAdmin, async (req, res) =>
       message: 'Élève modifié avec succès'
     });
   } catch (error) {
+    console.error('❌ Erreur lors de la modification de l\'élève:', error);
     logger.error('Erreur lors de la modification de l\'élève:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    res.status(500).json({ 
+      success: false, 
+      error: { message: 'Erreur serveur' },
+      details: error.message 
+    });
   }
 });
 
 // DELETE /api/admin/students/:id - Supprimer un élève (soft delete)
 router.delete('/students/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    console.log('🗑️ Suppression élève:', req.params.id);
+    
     const { id } = req.params;
     
-    await db.execute(
+    // Vérifier que l'élève existe et n'est pas un admin
+    const student = await query(
+      `SELECT u.id, u.name, u.email 
+       FROM users u
+       LEFT JOIN admins a ON (BINARY a.user_id = BINARY u.id OR BINARY a.email = BINARY u.email)
+       WHERE u.id = ? AND a.id IS NULL`,
+      [id]
+    );
+    
+    if (student.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Élève non trouvé ou est un administrateur' }
+      });
+    }
+    
+    await query(
       'UPDATE users SET deleted_at = NOW() WHERE id = ?',
       [id]
     );
     
-    logger.info(`Élève supprimé: ${id} par ${req.user.email}`);
+    console.log('✅ Élève supprimé avec succès:', student[0].name);
+    logger.info(`Élève supprimé: ${id} (${student[0].name}) par ${req.user.email}`);
     
     res.json({
       success: true,
       message: 'Élève supprimé avec succès'
     });
   } catch (error) {
+    console.error('❌ Erreur lors de la suppression de l\'élève:', error);
     logger.error('Erreur lors de la suppression de l\'élève:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    res.status(500).json({ 
+      success: false, 
+      error: { message: 'Erreur serveur' },
+      details: error.message 
+    });
   }
 });
 
@@ -419,8 +478,10 @@ router.delete('/documents/:id', authenticateToken, requireAdmin, async (req, res
 // GET /api/admin/stats - Statistiques générales
 router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Statistiques des élèves
-    const [studentStats] = await db.execute(`
+    console.log('📊 Récupération des statistiques admin...');
+    
+    // Statistiques des élèves - Approche avec sous-requêtes pour éviter les problèmes de collation
+    const studentStats = await query(`
       SELECT 
         COUNT(*) as total_students,
         COUNT(CASE WHEN classe = '6eme' THEN 1 END) as classe_6eme,
@@ -431,42 +492,79 @@ router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
         COUNT(CASE WHEN classe = 'premiere' THEN 1 END) as classe_premiere,
         COUNT(CASE WHEN classe = 'terminale' THEN 1 END) as classe_terminale
       FROM users u
-      LEFT JOIN admins a ON a.user_id = u.id
-      WHERE a.id IS NULL AND u.deleted_at IS NULL
+      WHERE u.deleted_at IS NULL 
+      AND u.id NOT IN (
+        SELECT COALESCE(user_id, '') FROM admins WHERE user_id IS NOT NULL
+      )
+      AND u.email NOT IN (
+        SELECT COALESCE(email, '') FROM admins WHERE email IS NOT NULL
+      )
     `);
     
-    // Statistiques des documents
-    const [documentStats] = await db.execute(`
+    // Statistiques des documents (utiliser la nouvelle colonne document_type)
+    const documentStats = await query(`
       SELECT 
         COUNT(*) as total_documents,
         COUNT(CASE WHEN document_type = 'book' THEN 1 END) as books,
         COUNT(CASE WHEN document_type = 'methodology' THEN 1 END) as methodologies,
         COUNT(CASE WHEN document_type = 'exercise' THEN 1 END) as exercises,
-        SUM(download_count) as total_downloads
+        COALESCE(SUM(download_count), 0) as total_downloads
       FROM documents 
       WHERE deleted_at IS NULL
     `);
     
+    // Compter les admins
+    const adminStats = await query(`SELECT COUNT(*) as total_admins FROM admins`);
+    
     // Documents par classe
-    const [documentsByClass] = await db.execute(`
+    const documentsByClass = await query(`
       SELECT classe, COUNT(*) as count
       FROM documents 
-      WHERE deleted_at IS NULL
+      WHERE deleted_at IS NULL AND classe IS NOT NULL
       GROUP BY classe
       ORDER BY classe
     `);
     
+    console.log('✅ Statistiques récupérées:', {
+      students: studentStats[0],
+      documents: documentStats[0],
+      admins: adminStats[0]
+    });
+    
     res.json({
       success: true,
       data: {
-        students: studentStats[0],
-        documents: documentStats[0],
-        documentsByClass
+        students: {
+          total_students: studentStats[0]?.total_students || 0,
+          classe_6eme: studentStats[0]?.classe_6eme || 0,
+          classe_5eme: studentStats[0]?.classe_5eme || 0,
+          classe_4eme: studentStats[0]?.classe_4eme || 0,
+          classe_3eme: studentStats[0]?.classe_3eme || 0,
+          classe_seconde: studentStats[0]?.classe_seconde || 0,
+          classe_premiere: studentStats[0]?.classe_premiere || 0,
+          classe_terminale: studentStats[0]?.classe_terminale || 0
+        },
+        documents: {
+          total_documents: documentStats[0]?.total_documents || 0,
+          books: documentStats[0]?.books || 0,
+          methodologies: documentStats[0]?.methodologies || 0,
+          exercises: documentStats[0]?.exercises || 0,
+          total_downloads: documentStats[0]?.total_downloads || 0
+        },
+        admins: {
+          total_admins: adminStats[0]?.total_admins || 0
+        },
+        documentsByClass: documentsByClass || []
       }
     });
   } catch (error) {
+    console.error('❌ Erreur lors de la récupération des statistiques:', error);
     logger.error('Erreur lors de la récupération des statistiques:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    res.status(500).json({ 
+      success: false, 
+      error: { message: 'Erreur serveur' },
+      details: error.message 
+    });
   }
 });
 

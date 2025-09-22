@@ -166,7 +166,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     // Récupérer l'utilisateur avec le mot de passe hashé
     const users = await query(
       `SELECT id, name, email, phone_number, age_range, total_points, level, 
-              classe, matieres, langue_gabonaise, role, created_at, last_login_at, password_hash
+              classe, matieres, langue_gabonaise, created_at, last_login_at, password_hash
        FROM users 
        WHERE email = ? AND deleted_at IS NULL`,
       [email]
@@ -252,7 +252,6 @@ router.post('/login', asyncHandler(async (req, res) => {
           classe: user.classe,
           matieres: user.matieres ? JSON.parse(user.matieres) : [],
           langueGabonaise: user.langue_gabonaise,
-          role: user.role || (isAdmin ? 'admin' : 'student'),
           isAdmin,
           isConnected: true,
           createdAt: user.created_at,

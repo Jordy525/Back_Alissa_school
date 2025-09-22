@@ -41,7 +41,7 @@ const authenticateToken = async (req, res, next) => {
     
     // Récupération de l'utilisateur depuis la base de données
     const users = await query(
-      'SELECT id, email, name, avatar_url, classe, selected_class, total_points, level, google_id, role, created_at, last_login_at FROM users WHERE id = ?',
+      'SELECT id, email, name, avatar_url, classe, selected_class, total_points, level, google_id, created_at, last_login_at FROM users WHERE id = ?',
       [userId]
     );
 
@@ -76,7 +76,7 @@ const authenticateToken = async (req, res, next) => {
       totalPoints: user.total_points,
       level: user.level,
       googleId: user.google_id,
-      role: user.role || 'student',
+      // plus de rôle, l'admin est géré via table admins
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at
     };

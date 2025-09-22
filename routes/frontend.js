@@ -215,15 +215,28 @@ router.post('/login', asyncHandler(async (req, res) => {
     // Vérifier dans la table admins au lieu du champ role
     let redirectPath = '/dashboard';
     let isAdmin = false;
+    let userRole = 'student';
+    
     try {
-      const [admins] = await query(
+      const admins = await query(
         'SELECT id FROM admins WHERE user_id = ? OR email = ? LIMIT 1',
         [user.id, user.email]
       );
-      isAdmin = Array.isArray(admins) ? admins.length > 0 : admins && admins.id;
+      isAdmin = admins.length > 0;
+      userRole = isAdmin ? 'admin' : 'student';
+      
+      console.log('🔍 [LOGIN] Vérification admin:', {
+        userId: user.id,
+        email: user.email,
+        adminsFound: admins.length,
+        isAdmin,
+        userRole
+      });
     } catch (e) {
+      console.error('❌ [LOGIN] Erreur vérification admin:', e);
       // En cas d'erreur de table manquante, rester compatible
       isAdmin = (user.role === 'admin' || user.role === 'super_admin');
+      userRole = isAdmin ? 'admin' : 'student';
     }
 
     if (isAdmin) {
@@ -252,6 +265,7 @@ router.post('/login', asyncHandler(async (req, res) => {
           classe: user.classe,
           matieres: user.matieres ? JSON.parse(user.matieres) : [],
           langueGabonaise: user.langue_gabonaise,
+          role: userRole, // Ajouter le rôle ici
           isAdmin,
           isConnected: true,
           createdAt: user.created_at,

@@ -37,6 +37,7 @@ const corsOptions = {
     'https://front-alissa-school-seven.vercel.app', // URL de production
     'https://front-alissa-school-446cs1h39-jordys-projects-d5468569.vercel.app', // URL Vercel actuelle
     'https://front-alissa-school-hctk8anw1-jordys-projects-d5468569.vercel.app', // Nouvelle URL Vercel
+    'https://front-alissa-school-ifao2yvxs-jordys-projects-d5468569.vercel.app', // URL Vercel la plus récente
     /^https:\/\/front-alissa-school.*\.vercel\.app$/, // Pattern pour toutes les URLs Vercel
     'http://localhost:8080', // Port alternatif pour le frontend
     'http://localhost:3000', // Port du backend (pour les tests)

@@ -222,7 +222,7 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
   try {
     // Récupération de l'utilisateur
     const users = await query(
-      'SELECT id, email, password_hash, name, avatar_url, selected_class, classe, total_points, level, role, created_at FROM users WHERE email = ? AND deleted_at IS NULL',
+      'SELECT id, email, password_hash, name, avatar_url, selected_class, classe, total_points, level, created_at FROM users WHERE email = ? AND deleted_at IS NULL',
       [email]
     );
 
@@ -248,6 +248,15 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
       });
     }
 
+    // Vérifier si l'utilisateur est un administrateur dans la table admins
+    const adminCheck = await query(
+      'SELECT id FROM admins WHERE user_id = ? OR email = ?',
+      [user.id, user.email]
+    );
+
+    // Déterminer le rôle basé sur la table admins
+    const userRole = adminCheck.length > 0 ? 'admin' : 'student';
+
     // Mise à jour de la dernière connexion
     await query(
       'UPDATE users SET last_login_at = NOW() WHERE id = ?',
@@ -266,9 +275,9 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
 
     // Déterminer le type de redirection selon le rôle
     let redirectPath = '/dashboard';
-    if (user.role === 'admin' || user.role === 'super_admin') {
+    if (userRole === 'admin') {
       redirectPath = '/admin/dashboard';
-    } else if (user.role === 'student') {
+    } else if (userRole === 'student') {
       // Pour les étudiants, vérifier s'ils ont déjà sélectionné leur classe
       if (!user.classe && !user.selected_class) {
         redirectPath = '/choose-class';
@@ -277,7 +286,7 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
       }
     }
 
-    logger.logEvent('user_login', { userId: user.id, email, role: user.role });
+    logger.logEvent('user_login', { userId: user.id, email, role: userRole });
 
     res.json({
       success: true,
@@ -285,7 +294,7 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
       data: {
         user: {
           ...user,
-          role: user.role || 'student'
+          role: userRole
         },
         token,
         redirectPath
@@ -417,6 +426,33 @@ router.get('/verify', authenticateToken, asyncHandler(async (req, res) => {
     });
   } catch (error) {
     logger.logError(error, { context: 'token_verification' });
+    throw error;
+  }
+}));
+
+// Route pour vérifier le statut admin
+router.get('/check-admin', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userEmail = req.user.email;
+    
+    // Vérifier si l'utilisateur est admin
+    const adminCheck = await query(
+      'SELECT id FROM admins WHERE user_id = ? OR email = ?',
+      [userId, userEmail]
+    );
+    
+    const isAdmin = adminCheck.length > 0;
+    
+    res.json({
+      success: true,
+      data: {
+        isAdmin,
+        role: isAdmin ? 'admin' : 'student'
+      }
+    });
+  } catch (error) {
+    logger.logError(error, { context: 'admin_check' });
     throw error;
   }
 }));

@@ -66,6 +66,15 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Vérifier si l'utilisateur est un administrateur dans la table admins
+    const adminCheck = await query(
+      'SELECT id FROM admins WHERE user_id = ? OR email = ?',
+      [user.id, user.email]
+    );
+
+    // Déterminer le rôle basé sur la table admins
+    const userRole = adminCheck.length > 0 ? 'admin' : 'student';
+
     // Ajout de l'utilisateur à la requête
     req.user = {
       id: user.id,
@@ -76,7 +85,7 @@ const authenticateToken = async (req, res, next) => {
       totalPoints: user.total_points,
       level: user.level,
       googleId: user.google_id,
-      // plus de rôle, l'admin est géré via table admins
+      role: userRole, // Ajouter le rôle déterminé depuis la table admins
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at
     };

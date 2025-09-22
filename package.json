@@ -13,7 +13,8 @@
     "test-flow": "node test-flow.js",
     "test-class": "node test-class-selection.js",
     "migrate": "node scripts/migrate.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "add-admin": "node scripts/add-admin.js"
   },
   "keywords": [
     "education",

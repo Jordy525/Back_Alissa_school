@@ -4,9 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
-const db = require('../config/database');
+const { query } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const logger = require('../config/logger');
+const { logger } = require('../config/logger');
 
 // Configuration Multer pour l'upload de fichiers
 const storage = multer.diskStorage({
@@ -287,7 +287,7 @@ router.get('/documents', authenticateToken, requireAdmin, async (req, res) => {
     `;
     
     params.push(parseInt(limit), offset);
-    const [documents] = await db.execute(query, params);
+    const documents = await query(queryStr, params);
     
     // Compter le total pour la pagination
     const countQuery = `
@@ -295,7 +295,7 @@ router.get('/documents', authenticateToken, requireAdmin, async (req, res) => {
       FROM documents d 
       WHERE ${whereClause}
     `;
-    const [countResult] = await db.execute(countQuery, params.slice(0, -2));
+    const countResult = await query(countQuery, params.slice(0, -2));
     const total = countResult[0].total;
     
     res.json({
@@ -338,7 +338,7 @@ router.post('/documents', authenticateToken, requireAdmin, upload.single('file')
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
-    await db.execute(query, [
+    await query(queryStr, [
       documentId,
       title,
       description || null,

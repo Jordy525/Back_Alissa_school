@@ -25,7 +25,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     const existingUsers = await query(
       `SELECT id, email, name, avatar_url, google_id, total_points, level, 
               phone_number, age_range, classe, matieres, langue_gabonaise, 
-              role, created_at, last_login_at
+              created_at, last_login_at
        FROM users WHERE google_id = ? OR email = ?`,
       [profile.id, profile.emails[0].value]
     );
@@ -184,7 +184,7 @@ router.post('/register', validateRegistration, asyncHandler(async (req, res) => 
 
     // Récupération des données utilisateur
     const users = await query(
-      'SELECT id, email, name, avatar_url, selected_class, total_points, level, role, created_at FROM users WHERE id = ?',
+      'SELECT id, email, name, avatar_url, selected_class, total_points, level, created_at FROM users WHERE id = ?',
       [userId]
     );
 
@@ -286,15 +286,14 @@ router.post('/login', validateLogin, asyncHandler(async (req, res) => {
       }
     }
 
-    logger.logEvent('user_login', { userId: user.id, email, role: userRole });
+    logger.logEvent('user_login', { userId: user.id, email });
 
     res.json({
       success: true,
       message: 'Connexion réussie',
       data: {
         user: {
-          ...user,
-          role: userRole
+          ...user
         },
         token,
         redirectPath
@@ -447,8 +446,7 @@ router.get('/check-admin', authenticateToken, asyncHandler(async (req, res) => {
     res.json({
       success: true,
       data: {
-        isAdmin,
-        role: isAdmin ? 'admin' : 'student'
+        isAdmin
       }
     });
   } catch (error) {

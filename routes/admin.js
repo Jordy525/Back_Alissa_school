@@ -238,6 +238,102 @@ router.delete('/students/:id', authenticateToken, requireAdmin, async (req, res)
   }
 });
 
+// GET /api/admin/students/:id/overview - Vue d'ensemble d'un élève (succès, moyennes, langue, quiz)
+router.get('/students/:id/overview', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Profil de base (inclut la langue choisie et les matières)
+    const users = await query(
+      `SELECT id, name, email, classe, total_points, level, langue_gabonaise, 
+              matieres, created_at, last_login_at
+       FROM users
+       WHERE id = ? AND deleted_at IS NULL
+       LIMIT 1`,
+      [id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ success: false, error: { message: 'Élève introuvable' } });
+    }
+
+    const user = users[0];
+    const subjects = user.matieres ? (typeof user.matieres === 'string' ? JSON.parse(user.matieres) : user.matieres) : [];
+
+    // Succès débloqués
+    const achievements = await query(
+      `SELECT a.id, a.title, a.points, a.rarity, ua.unlocked_at
+       FROM user_achievements ua
+       INNER JOIN achievements a ON a.id = ua.achievement_id
+       WHERE ua.user_id = ?
+       ORDER BY ua.unlocked_at DESC
+       LIMIT 30`,
+      [id]
+    );
+
+    // Historique des quiz (les 20 derniers) et calcul des moyennes
+    const quizAttempts = await query(
+      `SELECT qa.id, qa.score, qa.total_questions, qa.correct_answers, qa.points_earned, qa.completed_at,
+              q.id as quiz_id, q.title, q.subject_id
+       FROM quiz_attempts qa
+       INNER JOIN quizzes q ON q.id = qa.quiz_id
+       WHERE qa.user_id = ?
+       ORDER BY qa.completed_at DESC
+       LIMIT 20`,
+      [id]
+    );
+
+    // Moyenne globale et par matière (pour les matières connues)
+    const averagesBySubject = {};
+    let totalPercent = 0;
+    let count = 0;
+    for (const att of quizAttempts) {
+      const percent = att.total_questions > 0 ? Math.round((att.correct_answers / att.total_questions) * 100) : 0;
+      totalPercent += percent;
+      count += 1;
+      const key = String(att.subject_id || 'autre');
+      if (!averagesBySubject[key]) {
+        averagesBySubject[key] = { total: 0, count: 0 };
+      }
+      averagesBySubject[key].total += percent;
+      averagesBySubject[key].count += 1;
+    }
+
+    const overallAverage = count > 0 ? Math.round(totalPercent / count) : 0;
+    const formattedAverages = Object.entries(averagesBySubject).map(([subjectId, agg]) => ({
+      subjectId,
+      average: Math.round((agg.total / Math.max(agg.count, 1)))
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          classe: user.classe,
+          langue: user.langue_gabonaise || null,
+          subjects,
+          totalPoints: user.total_points,
+          level: user.level,
+          createdAt: user.created_at,
+          lastLoginAt: user.last_login_at
+        },
+        achievements,
+        averages: {
+          overall: overallAverage,
+          bySubject: formattedAverages
+        },
+        quizzes: quizAttempts
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erreur overview élève:', error);
+    res.status(500).json({ success: false, error: { message: 'Erreur serveur' }, details: error.message });
+  }
+});
+
 // =============================================
 // GESTION DES DOCUMENTS
 // =============================================

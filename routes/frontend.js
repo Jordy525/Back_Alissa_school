@@ -174,6 +174,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     );
 
     if (users.length === 0) {
+      console.log('❌ [LOGIN] Utilisateur introuvable pour', normalizedEmail);
       return res.status(401).json({
         success: false,
         error: {
@@ -185,7 +186,18 @@ router.post('/login', asyncHandler(async (req, res) => {
     const user = users[0];
 
     // Vérifier le mot de passe avec bcrypt
+    if (!user.password_hash) {
+      console.log('❌ [LOGIN] password_hash null pour', user.email);
+      return res.status(401).json({
+        success: false,
+        error: { message: 'Email ou mot de passe incorrect' }
+      });
+    }
+
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    if (!isPasswordValid) {
+      console.log('❌ [LOGIN] Mot de passe invalide pour', user.email);
+    }
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,

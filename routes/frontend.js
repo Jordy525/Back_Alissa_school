@@ -169,7 +169,9 @@ router.post('/login', asyncHandler(async (req, res) => {
       `SELECT id, name, email, phone_number, age_range, total_points, level, 
               classe, matieres, langue_gabonaise, created_at, last_login_at, password_hash
        FROM users 
-       WHERE email = ? AND deleted_at IS NULL`,
+       WHERE LOWER(email) = LOWER(?) AND deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
       [normalizedEmail]
     );
 

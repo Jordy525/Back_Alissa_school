@@ -16,8 +16,8 @@ async function createAdmin() {
       process.exit(1);
     }
 
-    // Vérifier si l'utilisateur existe
-    const users = await query('SELECT id, email, name FROM users WHERE email = ?', [email]);
+    // Vérifier si l'utilisateur existe (insensible à la casse)
+    const users = await query('SELECT id, email, name FROM users WHERE LOWER(email) = LOWER(?) ORDER BY created_at DESC LIMIT 1', [email]);
 
     let userId;
     if (users.length === 0) {
@@ -44,7 +44,7 @@ async function createAdmin() {
     }
 
     // Vérifier si déjà admin
-    const existingAdmin = await query('SELECT id FROM admins WHERE user_id = ? OR email = ?', [userId, email]);
+    const existingAdmin = await query('SELECT id FROM admins WHERE user_id = ? OR LOWER(email) = LOWER(?)', [userId, email]);
     if (existingAdmin.length > 0) {
       console.log('⚠️  Cet utilisateur est déjà administrateur.');
       process.exit(0);

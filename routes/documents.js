@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
 const db = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const logger = require('../config/logger');
+const { logger } = require('../config/logger');
 
 // Configuration Multer pour l'upload de fichiers
 const storage = multer.diskStorage({
@@ -118,7 +118,7 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
 // POST /api/documents/admin - Créer un nouveau document (admin)
 router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), async (req, res) => {
   try {
-    const { title, description, subject_id, classe, category_id } = req.body;
+    const { title, description, subject_id, classe, category_id, document_type = 'book' } = req.body;
     
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
@@ -133,8 +133,8 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
     const fileType = path.extname(req.file.originalname).toLowerCase().substring(1);
     
     const query = `
-      INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, document_type, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     await db.execute(query, [
@@ -147,6 +147,7 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
       fileSize,
       subject_id,
       classe,
+      document_type,
       req.user.id
     ]);
     
@@ -235,7 +236,7 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
 // GET /api/documents - Documents pour l'élève connecté
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { subject_id, category_id, search } = req.query;
+    const { subject_id, category_id, search, document_type } = req.query;
     const userClasse = req.user.classe;
     
     if (!userClasse) {
@@ -248,6 +249,18 @@ router.get('/', authenticateToken, async (req, res) => {
     if (subject_id) {
       whereClause += ' AND d.subject_id = ?';
       params.push(subject_id);
+    }
+    
+    if (document_type) {
+      whereClause += ' AND d.document_type = ?';
+      params.push(document_type);
+    }
+    
+    let joinCategory = '';
+    if (category_id) {
+      joinCategory = 'JOIN document_category_links dcl ON dcl.document_id = d.id';
+      whereClause += ' AND dcl.category_id = ?';
+      params.push(category_id);
     }
     
     if (search) {
@@ -265,11 +278,13 @@ router.get('/', authenticateToken, async (req, res) => {
         d.file_size,
         d.download_count,
         d.created_at,
+        d.document_type,
         s.name as subject_name,
         s.color as subject_color,
         s.icon as subject_icon
       FROM documents d
       JOIN subjects s ON d.subject_id = s.id
+      ${joinCategory}
       WHERE ${whereClause}
       ORDER BY d.created_at DESC
     `;

@@ -14,8 +14,9 @@ const dbConfig = {
 	waitForConnections: true,
 	connectionLimit: Number(process.env.DB_POOL_LIMIT || 10),
 	queueLimit: 0,
-	acquireTimeout: Number(process.env.DB_ACQUIRE_TIMEOUT || 20000),
 	connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 20000),
+	enableKeepAlive: true,
+	keepAliveInitialDelay: Number(process.env.DB_KEEPALIVE_DELAY || 10000),
 	// Certains providers (AlwaysData, PlanetScale, etc.) requièrent SSL
 	ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: process.env.DB_SSL_STRICT === 'true' } : undefined
 };

@@ -6,9 +6,10 @@ async function createAdmin() {
   try {
     await connectDB();
 
-    const email = process.argv[2];
+    const email = (process.argv[2] || '').trim().toLowerCase();
     const password = process.argv[3];
     const name = process.argv[4] || 'Admin';
+    const setPasswordFlag = process.argv.includes('--set-password');
 
     if (!email || !password) {
       console.log('Usage: node scripts/create-admin.js <email> <password> [name]');
@@ -31,6 +32,15 @@ async function createAdmin() {
     } else {
       userId = users[0].id;
       console.log(`ℹ️  Utilisateur existant détecté: ${email} (${userId})`);
+      if (setPasswordFlag) {
+        if (!password) {
+          console.log('❌ --set-password exige que vous passiez aussi <password>');
+          process.exit(1);
+        }
+        const passwordHash = await bcrypt.hash(password, 12);
+        await query('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [passwordHash, userId]);
+        console.log('🔒 Mot de passe mis à jour pour cet utilisateur.');
+      }
     }
 
     // Vérifier si déjà admin

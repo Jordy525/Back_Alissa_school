@@ -151,6 +151,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 
   const { email, password } = req.body;
+  const normalizedEmail = (email || '').trim().toLowerCase();
 
   if (!email || !password) {
     console.log('❌ [LOGIN] Données manquantes:', { email: !!email, password: !!password });
@@ -169,7 +170,7 @@ router.post('/login', asyncHandler(async (req, res) => {
               classe, matieres, langue_gabonaise, created_at, last_login_at, password_hash
        FROM users 
        WHERE email = ? AND deleted_at IS NULL`,
-      [email]
+      [normalizedEmail]
     );
 
     if (users.length === 0) {
@@ -220,7 +221,7 @@ router.post('/login', asyncHandler(async (req, res) => {
     try {
       const admins = await query(
         'SELECT id FROM admins WHERE user_id = ? OR email = ? LIMIT 1',
-        [user.id, user.email]
+        [user.id, normalizedEmail]
       );
       isAdmin = admins.length > 0;
       userRole = isAdmin ? 'admin' : 'student';

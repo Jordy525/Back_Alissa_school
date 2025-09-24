@@ -21,6 +21,25 @@ const dbConfig = {
 	ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: process.env.DB_SSL_STRICT === 'true' } : undefined
 };
 
+const logDbConfig = () => {
+	try {
+		const safe = {
+			host: dbConfig.host,
+			port: dbConfig.port,
+			user: dbConfig.user,
+			database: dbConfig.database,
+			sslEnabled: Boolean(dbConfig.ssl),
+			sslStrict: process.env.DB_SSL_STRICT === 'true',
+			poolLimit: dbConfig.connectionLimit,
+			connectTimeout: dbConfig.connectTimeout,
+			keepAliveInitialDelay: dbConfig.keepAliveInitialDelay
+		};
+		logger.info('🔧 DB config (safe): ' + JSON.stringify(safe));
+	} catch (e) {
+		logger.warn('Impossible d\'afficher la configuration DB');
+	}
+};
+
 // Création du pool de connexions
 let pool;
 
@@ -29,6 +48,8 @@ const connectWithRetry = async (attempt = 1) => {
 		pool = mysql.createPool(dbConfig);
 		const connection = await pool.getConnection();
 		await connection.ping();
+		// Test simple de requête
+		await connection.query('SELECT 1 AS ok');
 		connection.release();
 		logger.info('✅ Connexion à MySQL établie avec succès');
 		return pool;
@@ -49,6 +70,7 @@ const connectDB = async () => {
 		if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
 			logger.warn("⚠️  Variables d'environnement DB incomplètes. Assurez-vous de définir DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (et DB_PORT si nécessaire).");
 		}
+		logDbConfig();
 		return await connectWithRetry();
 	} catch (error) {
 		logger.error('❌ Erreur de connexion à la base de données:', error);

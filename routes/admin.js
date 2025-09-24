@@ -367,7 +367,7 @@ router.get('/documents', authenticateToken, requireAdmin, async (req, res) => {
       params.push(document_type);
     }
     
-    const query = `
+    const sql = `
       SELECT 
         d.id, d.title, d.description, d.file_name, d.file_type, 
         d.file_size, d.classe, d.document_type, d.download_count,
@@ -383,7 +383,7 @@ router.get('/documents', authenticateToken, requireAdmin, async (req, res) => {
     `;
     
     params.push(parseInt(limit), offset);
-    const documents = await query(queryStr, params);
+    const documents = await query(sql, params);
     
     // Compter le total pour la pagination
     const countQuery = `
@@ -429,12 +429,12 @@ router.post('/documents', authenticateToken, requireAdmin, upload.single('file')
     const fileSize = req.file.size;
     const fileType = path.extname(req.file.originalname).toLowerCase().substring(1);
     
-    const query = `
+    const insertSql = `
       INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, document_type, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
-    await query(queryStr, [
+    await query(insertSql, [
       documentId,
       title,
       description || null,
@@ -455,7 +455,7 @@ router.post('/documents', authenticateToken, requireAdmin, upload.single('file')
           INSERT INTO document_category_links (id, document_id, category_id)
           VALUES (?, ?, ?)
         `;
-        await db.execute(categoryQuery, [uuidv4(), documentId, categoryId]);
+        await query(categoryQuery, [uuidv4(), documentId, categoryId]);
       }
     }
     
@@ -513,8 +513,8 @@ router.put('/documents/:id', authenticateToken, requireAdmin, async (req, res) =
     updateFields.push('updated_at = NOW()');
     params.push(id);
     
-    const query = `UPDATE documents SET ${updateFields.join(', ')} WHERE id = ?`;
-    await db.execute(query, params);
+    const updateSql = `UPDATE documents SET ${updateFields.join(', ')} WHERE id = ?`;
+    await query(updateSql, params);
     
     logger.info(`Document modifié: ${id} par ${req.user.email}`);
     
@@ -534,20 +534,14 @@ router.delete('/documents/:id', authenticateToken, requireAdmin, async (req, res
     const { id } = req.params;
     
     // Récupérer le chemin du fichier avant suppression
-    const [documents] = await db.execute(
-      'SELECT file_path FROM documents WHERE id = ?',
-      [id]
-    );
+    const documents = await query('SELECT file_path FROM documents WHERE id = ?', [id]);
     
     if (documents.length === 0) {
       return res.status(404).json({ success: false, message: 'Document non trouvé' });
     }
     
     // Supprimer de la base de données
-    await db.execute(
-      'UPDATE documents SET deleted_at = NOW() WHERE id = ?',
-      [id]
-    );
+    await query('UPDATE documents SET deleted_at = NOW() WHERE id = ?', [id]);
     
     // Supprimer le fichier physique
     const filePath = documents[0].file_path;

@@ -4,6 +4,11 @@ const { logger } = require('./logger');
 // config/database.js
 require('dotenv').config(); // charge le fichier .env automatiquement
 
+// Prépare les options SSL en fonction de l'environnement
+const inferAlwaysData = (process.env.DB_HOST || 'mysql-zigh-portfolio.alwaysdata.net').includes('alwaysdata.net');
+const sslEnabled = process.env.DB_SSL === 'true' || inferAlwaysData;
+const sslStrict = process.env.DB_SSL_STRICT === 'true';
+
 // Configuration de la base de données
 const dbConfig = {
 	host: process.env.DB_HOST || 'mysql-zigh-portfolio.alwaysdata.net',
@@ -14,11 +19,16 @@ const dbConfig = {
 	waitForConnections: true,
 	connectionLimit: Number(process.env.DB_POOL_LIMIT || 10),
 	queueLimit: 0,
-	connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 20000),
+	connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 30000),
 	enableKeepAlive: true,
 	keepAliveInitialDelay: Number(process.env.DB_KEEPALIVE_DELAY || 10000),
-	// Certains providers (AlwaysData, PlanetScale, etc.) requièrent SSL
-	ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: process.env.DB_SSL_STRICT === 'true' } : undefined
+	// SSL requis par la plupart des providers managés (AlwaysData, PlanetScale, etc.)
+	ssl: sslEnabled
+		? {
+			rejectUnauthorized: sslStrict,
+			minVersion: 'TLSv1.2'
+		}
+		: undefined
 };
 
 const logDbConfig = () => {
@@ -54,8 +64,13 @@ const connectWithRetry = async (attempt = 1) => {
 		logger.info('✅ Connexion à MySQL établie avec succès');
 		return pool;
 	} catch (error) {
-		logger.error(`❌ Tentative ${attempt} - Connexion MySQL échouée:`, error);
-		if (attempt >= Number(process.env.DB_MAX_RETRIES || 3)) {
+		logger.error(`❌ Tentative ${attempt} - Connexion MySQL échouée:`, {
+			code: error && error.code,
+			errno: error && error.errno,
+			syscall: error && error.syscall,
+			message: error && error.message
+		});
+		if (attempt >= Number(process.env.DB_MAX_RETRIES || 5)) {
 			throw error;
 		}
 		const backoffMs = Math.min(30000, 2000 * attempt);
@@ -73,7 +88,12 @@ const connectDB = async () => {
 		logDbConfig();
 		return await connectWithRetry();
 	} catch (error) {
-		logger.error('❌ Erreur de connexion à la base de données:', error);
+		logger.error('❌ Erreur de connexion à la base de données:', {
+			code: error && error.code,
+			errno: error && error.errno,
+			syscall: error && error.syscall,
+			message: error && error.message
+		});
 		throw error;
 	}
 };

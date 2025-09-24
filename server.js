@@ -219,12 +219,8 @@ const startServer = async () => {
     }
 
     if (!process.env.DB_HOST) {
-      console.warn('⚠️  Variables de base de données non définies, utilisation des valeurs par défaut');
-      process.env.DB_HOST = 'localhost';
-      process.env.DB_PORT = '3306';
-      process.env.DB_NAME = 'alissa_school';
-      process.env.DB_USER = 'root';
-      process.env.DB_PASSWORD = 'password';
+      console.warn('⚠️  Variables de base de données non définies, veuillez configurer DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD dans l\'environnement.');
+      // Ne pas écraser en production avec des valeurs locales par défaut
     }
 
     await connectDB();

@@ -356,12 +356,16 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           logger.logEvent('user_google_redirect_dashboard', { userId: user.id, classe: user.classe });
           const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`;
           logger.logger.info('🔄 [GOOGLE_CALLBACK] Redirection vers dashboard:', redirectUrl);
+          console.log('🔍 [GOOGLE_CALLBACK] URL complète de redirection:', redirectUrl);
+          console.log('🔍 [GOOGLE_CALLBACK] Longueur URL:', redirectUrl.length);
           res.redirect(redirectUrl);
         } else {
           // Utilisateur non configuré, rediriger vers le callback pour traitement
           logger.logEvent('user_google_redirect_choose_class', { userId: user.id });
           const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`;
           logger.logger.info('🔄 [GOOGLE_CALLBACK] Redirection vers callback pour configuration:', redirectUrl);
+          console.log('🔍 [GOOGLE_CALLBACK] URL complète de redirection:', redirectUrl);
+          console.log('🔍 [GOOGLE_CALLBACK] Longueur URL:', redirectUrl.length);
           res.redirect(redirectUrl);
         }
       } catch (error) {

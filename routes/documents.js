@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
-const { query } = require('../config/database');
+const { query: dbQuery } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logger } = require('../config/logger');
 
@@ -69,7 +69,7 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
       params.push(`%${search}%`, `%${search}%`);
     }
     
-    const query = `
+    const sql = `
       SELECT 
         d.*,
         s.name as subject_name,
@@ -87,7 +87,7 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
     
     params.push(parseInt(limit), offset);
     
-    const documents = await query(query, params);
+    const documents = await dbQuery(sql, params);
     
     // Compter le total
     const countQuery = `
@@ -96,7 +96,7 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
       WHERE ${whereClause}
     `;
     
-    const countResult = await query(countQuery, params.slice(0, -2));
+    const countResult = await dbQuery(countQuery, params.slice(0, -2));
     const total = countResult[0].total;
     
     res.json({
@@ -128,16 +128,25 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
       return res.status(400).json({ success: false, message: 'Titre, matière et classe requis' });
     }
     
+    // Empêcher les doublons par (subject_id, classe, document_type)
+    const existing = await dbQuery(
+      'SELECT id FROM documents WHERE subject_id = ? AND classe = ? AND document_type = ? AND is_active = 1 LIMIT 1',
+      [subject_id, classe, document_type]
+    );
+    if (existing && existing.length > 0) {
+      return res.status(409).json({ success: false, message: 'Un document existe déjà pour cette matière, cette classe et ce type.' });
+    }
+
     const documentId = uuidv4();
     const fileSize = req.file.size;
     const fileType = path.extname(req.file.originalname).toLowerCase().substring(1);
     
-    const query = `
+    const insertSql = `
       INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, document_type, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
-    await query(query, [
+    await dbQuery(insertSql, [
       documentId,
       title,
       description || null,
@@ -157,7 +166,7 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
         INSERT INTO document_category_links (id, document_id, category_id)
         VALUES (?, ?, ?)
       `;
-      await query(categoryQuery, [uuidv4(), documentId, category_id]);
+      await dbQuery(categoryQuery, [uuidv4(), documentId, category_id]);
     }
     
     logger.info(`Document créé: ${title} par ${req.user.email}`);
@@ -179,13 +188,13 @@ router.put('/admin/:id', authenticateToken, requireAdmin, async (req, res) => {
     const { id } = req.params;
     const { title, description, classe, is_active } = req.body;
     
-    const query = `
+    const updateSql = `
       UPDATE documents 
       SET title = ?, description = ?, classe = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND created_by = ?
     `;
     
-    const result = await query(query, [
+    const result = await dbQuery(updateSql, [
       title,
       description,
       classe,
@@ -211,7 +220,7 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
     const { id } = req.params;
     
     // Récupérer le chemin du fichier
-    const documents = await query(
+    const documents = await dbQuery(
       'SELECT file_path FROM documents WHERE id = ? AND created_by = ?',
       [id, req.user.id]
     );
@@ -227,7 +236,7 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
     }
     
     // Supprimer de la base de données
-    await query('DELETE FROM documents WHERE id = ?', [id]);
+    await dbQuery('DELETE FROM documents WHERE id = ?', [id]);
     
     res.json({ success: true, message: 'Document supprimé avec succès' });
   } catch (error) {
@@ -275,7 +284,7 @@ router.get('/', authenticateToken, async (req, res) => {
       params.push(`%${search}%`, `%${search}%`);
     }
     
-    const query = `
+    const listSql = `
       SELECT 
         d.id,
         d.title,
@@ -296,7 +305,7 @@ router.get('/', authenticateToken, async (req, res) => {
       ORDER BY d.created_at DESC
     `;
     
-    const documents = await query(query, params);
+    const documents = await dbQuery(listSql, params);
     
     res.json({ success: true, data: documents });
   } catch (error) {
@@ -311,14 +320,14 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const userClasse = req.user.classe;
     
-    const query = `
+    const downloadSql = `
       SELECT d.*, s.name as subject_name
       FROM documents d
       JOIN subjects s ON d.subject_id = s.id
       WHERE d.id = ? AND d.classe = ? AND d.is_active = 1
     `;
     
-    const documents = await query(query, [id, userClasse]);
+    const documents = await dbQuery(downloadSql, [id, userClasse]);
     
     if (documents.length === 0) {
       return res.status(404).json({ success: false, message: 'Document non trouvé' });
@@ -327,13 +336,13 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     const document = documents[0];
     
     // Enregistrer le téléchargement
-    await query(
+    await dbQuery(
       'INSERT INTO document_downloads (id, document_id, user_id) VALUES (?, ?, ?)',
       [uuidv4(), id, req.user.id]
     );
     
     // Incrémenter le compteur de téléchargements
-    await query(
+    await dbQuery(
       'UPDATE documents SET download_count = download_count + 1 WHERE id = ?',
       [id]
     );
@@ -356,7 +365,7 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
 router.get('/categories', async (req, res) => {
   try {
     // Limiter aux deux catégories demandées pour l'instant
-    const categories = await query(
+    const categories = await dbQuery(
       "SELECT id, name, description, color, is_active, created_at FROM document_categories WHERE is_active = 1 AND name IN ('Manuels scolaires','Méthodologies') ORDER BY name"
     );
     
@@ -384,7 +393,7 @@ router.get('/categories', async (req, res) => {
 // GET /api/documents/stats - Statistiques (admin)
 router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const stats = await query(`
+    const stats = await dbQuery(`
       SELECT 
         classe,
         COUNT(*) as total_documents,

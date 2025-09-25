@@ -324,8 +324,22 @@ router.get('/', authenticateToken, async (req, res) => {
       } catch (e) {
         // En cas d'erreur de lecture, on ne bloque pas mais on continue avec le filtre
       }
+      // Résoudre subject_id si c'est un nom/slug plutôt qu'un UUID
+      let resolvedSubjectId = subject_id;
+      const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(subject_id));
+      if (!uuidLike) {
+        try {
+          const match = await dbQuery(
+            "SELECT id FROM subjects WHERE LOWER(name) = LOWER(?) COLLATE utf8mb4_unicode_ci LIMIT 1",
+            [String(subject_id)]
+          );
+          if (match && match.length > 0) {
+            resolvedSubjectId = match[0].id;
+          }
+        } catch {}
+      }
       whereClause += ' AND d.subject_id = ?';
-      params.push(subject_id);
+      params.push(resolvedSubjectId);
     }
     
     if (categorie) {

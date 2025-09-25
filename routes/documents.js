@@ -455,6 +455,43 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
   }
 });
 
+// LECTURE INLINE DU DOCUMENT (sans téléchargement)
+router.get('/:id/view', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userClasse = req.user && req.user.classe ? req.user.classe : req.user?.selectedClass || null;
+    const isAdminUser = req.user && (req.user.role === 'admin' || req.user.role === 'super_admin' || req.user.is_admin);
+
+    const baseSql = `
+      SELECT d.*, s.name as subject_name
+      FROM documents d
+      JOIN subjects s ON d.subject_id = s.id
+      WHERE d.id = ? AND d.is_active = 1`;
+
+    const documents = userClasse && !isAdminUser
+      ? await dbQuery(baseSql + ' AND d.classe = ?', [id, userClasse])
+      : await dbQuery(baseSql, [id]);
+
+    if (!documents || documents.length === 0) {
+      return res.status(404).json({ success: false, message: 'Document non trouvé' });
+    }
+
+    const document = documents[0];
+
+    if (!fs.existsSync(document.file_path)) {
+      logger.error('Business Error', { error: 'ENOENT inline', context: { path: document.file_path, id } });
+      return res.status(404).json({ success: false, message: 'Fichier introuvable' });
+    }
+
+    res.setHeader('Content-Type', document.file_type === 'pdf' ? 'application/pdf' : 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.file_name)}"`);
+    res.sendFile(path.resolve(document.file_path));
+  } catch (error) {
+    logger.error('Erreur lors de l\'ouverture inline:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // =============================================
 // ROUTES POUR LES CATÉGORIES
 // =============================================

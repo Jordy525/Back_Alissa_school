@@ -341,7 +341,7 @@ router.get('/students/:id/overview', authenticateToken, requireAdmin, async (req
 // GET /api/admin/documents - Récupérer tous les documents
 router.get('/documents', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { page = 1, limit = 20, search = '', classe = '', subject_id = '', document_type = '' } = req.query;
+    const { page = 1, limit = 20, search = '', classe = '', subject_id = '', categorie = '' } = req.query;
     const offset = (page - 1) * limit;
     
     let whereClause = 'd.deleted_at IS NULL';
@@ -362,15 +362,15 @@ router.get('/documents', authenticateToken, requireAdmin, async (req, res) => {
       params.push(subject_id);
     }
     
-    if (document_type) {
-      whereClause += ' AND d.document_type = ?';
-      params.push(document_type);
+    if (categorie) {
+      whereClause += ' AND d.categorie = ?';
+      params.push(categorie);
     }
     
     const sql = `
       SELECT 
         d.id, d.title, d.description, d.file_name, d.file_type, 
-        d.file_size, d.classe, d.document_type, d.download_count,
+        d.file_size, d.classe, d.categorie, d.download_count,
         d.is_active, d.created_at, d.updated_at,
         s.name as subject_name, s.color as subject_color,
         u.name as created_by_name
@@ -591,13 +591,12 @@ router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
       )
     `);
     
-    // Statistiques des documents (utiliser la nouvelle colonne document_type)
+    // Statistiques des documents (utiliser la nouvelle colonne categorie)
     const documentStats = await query(`
       SELECT 
         COUNT(*) as total_documents,
-        COUNT(CASE WHEN document_type = 'book' THEN 1 END) as books,
-        COUNT(CASE WHEN document_type = 'methodology' THEN 1 END) as methodologies,
-        COUNT(CASE WHEN document_type = 'exercise' THEN 1 END) as exercises,
+        COUNT(CASE WHEN categorie = 'book' THEN 1 END) as books,
+        COUNT(CASE WHEN categorie = 'methodology' THEN 1 END) as methodologies,
         COALESCE(SUM(download_count), 0) as total_downloads
       FROM documents 
       WHERE deleted_at IS NULL

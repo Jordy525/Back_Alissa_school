@@ -415,7 +415,7 @@ router.get('/documents', authenticateToken, requireAdmin, async (req, res) => {
 // POST /api/admin/documents - Créer un nouveau document
 router.post('/documents', authenticateToken, requireAdmin, upload.single('file'), async (req, res) => {
   try {
-    const { title, description, subject_id, classe, document_type = 'book', category_ids } = req.body;
+    const { title, description, subject_id, classe, categorie = 'book' } = req.body;
     
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
@@ -430,7 +430,7 @@ router.post('/documents', authenticateToken, requireAdmin, upload.single('file')
     const fileType = path.extname(req.file.originalname).toLowerCase().substring(1);
     
     const insertSql = `
-      INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, document_type, created_by)
+      INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, categorie, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
@@ -444,20 +444,10 @@ router.post('/documents', authenticateToken, requireAdmin, upload.single('file')
       fileSize,
       subject_id,
       classe,
-      document_type,
+      categorie,
       req.user.id
     ]);
-    
-    // Ajouter les catégories si fournies
-    if (category_ids && Array.isArray(category_ids)) {
-      for (const categoryId of category_ids) {
-        const categoryQuery = `
-          INSERT INTO document_category_links (id, document_id, category_id)
-          VALUES (?, ?, ?)
-        `;
-        await query(categoryQuery, [uuidv4(), documentId, categoryId]);
-      }
-    }
+
     
     logger.info(`Document créé: ${title} par ${req.user.email}`);
     
@@ -476,7 +466,7 @@ router.post('/documents', authenticateToken, requireAdmin, upload.single('file')
 router.put('/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, subject_id, classe, document_type, is_active } = req.body;
+    const { title, description, subject_id, classe, categorie, is_active } = req.body;
     
     const updateFields = [];
     const params = [];
@@ -497,9 +487,9 @@ router.put('/documents/:id', authenticateToken, requireAdmin, async (req, res) =
       updateFields.push('classe = ?');
       params.push(classe);
     }
-    if (document_type) {
-      updateFields.push('document_type = ?');
-      params.push(document_type);
+    if (categorie) {
+      updateFields.push('categorie = ?');
+      params.push(categorie);
     }
     if (is_active !== undefined) {
       updateFields.push('is_active = ?');

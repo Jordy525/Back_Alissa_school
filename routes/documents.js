@@ -478,14 +478,47 @@ router.get('/:id/view', authenticateToken, async (req, res) => {
 
     const document = documents[0];
 
-    if (!fs.existsSync(document.file_path)) {
-      logger.error('Business Error', { error: 'ENOENT inline', context: { path: document.file_path, id } });
+    const resolvedPath = path.resolve(document.file_path);
+    const exists = fs.existsSync(document.file_path);
+    let stats = null;
+    try { stats = exists ? fs.statSync(document.file_path) : null; } catch {}
+    logger.info('[DOCS_VIEW] Vérification fichier avant envoi', {
+      id,
+      userId: req.user?.id,
+      userClasse,
+      isAdminUser,
+      file_path: document.file_path,
+      resolvedPath,
+      cwd: process.cwd(),
+      __dirname,
+      isAbsolute: path.isAbsolute(document.file_path),
+      exists,
+      stats
+    });
+
+    if (!exists) {
+      logger.error('Business Error', { error: 'ENOENT inline', context: { path: document.file_path, resolvedPath, id } });
       return res.status(404).json({ success: false, message: 'Fichier introuvable' });
     }
 
     res.setHeader('Content-Type', document.file_type === 'pdf' ? 'application/pdf' : 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.file_name)}"`);
-    res.sendFile(path.resolve(document.file_path));
+    res.sendFile(resolvedPath, (err) => {
+      if (err) {
+        logger.error('[DOCS_VIEW] Erreur sendFile', {
+          message: err.message,
+          code: err.code,
+          stack: err.stack,
+          pathTried: resolvedPath,
+          url: req.originalUrl,
+          method: req.method,
+          ip: req.ip,
+          userAgent: req.headers['user-agent']
+        });
+        return res.status(err.statusCode || 500).json({ success: false, message: 'Erreur lors de l\'envoi du fichier' });
+      }
+      logger.info('[DOCS_VIEW] Fichier servi en inline', { id, path: resolvedPath });
+    });
   } catch (error) {
     logger.error('Erreur lors de l\'ouverture inline:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });

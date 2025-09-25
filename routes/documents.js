@@ -9,6 +9,21 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logger } = require('../config/logger');
 
 // Configuration Multer pour l'upload de fichiers
+// Utilitaire: assainir les noms de fichiers (supprime accents/caractères spéciaux)
+const sanitizeFilename = (name) => {
+  try {
+    const base = path.basename(name);
+    const withoutDiacritics = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return withoutDiacritics
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^[-.]+|[-.]+$/g, '')
+      .toLowerCase();
+  } catch {
+    return 'file';
+  }
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../uploads/documents');
@@ -18,7 +33,8 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueName = `${uuidv4()}-${file.originalname}`;
+    const safeOriginal = sanitizeFilename(file.originalname);
+    const uniqueName = `${uuidv4()}-${safeOriginal}`;
     cb(null, uniqueName);
   }
 });
@@ -48,7 +64,7 @@ const upload = multer({
 // GET /api/documents/admin - Liste tous les documents (admin)
 router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { page = 1, limit = 20, classe, subject_id, search } = req.query;
+    const { page = 1, limit = 20, classe, subject_id, search, categorie } = req.query;
     const offset = (page - 1) * limit;
     
     let whereClause = 'd.is_active = 1';
@@ -67,6 +83,10 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
     if (search) {
       whereClause += ' AND (d.title LIKE ? OR d.description LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
+    }
+    if (categorie) {
+      whereClause += ' AND d.categorie = ?';
+      params.push(categorie);
     }
     
     const sql = `
@@ -118,7 +138,7 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
 // POST /api/documents/admin - Créer un nouveau document (admin)
 router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), async (req, res) => {
   try {
-    const { title, description, subject_id, classe, category_id, document_type = 'book' } = req.body;
+    const { title, description, subject_id, classe, categorie = 'book' } = req.body;
     
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
@@ -130,8 +150,8 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
     
     // Empêcher les doublons par (subject_id, classe, document_type)
     const existing = await dbQuery(
-      'SELECT id FROM documents WHERE subject_id = ? AND classe = ? AND document_type = ? AND is_active = 1 LIMIT 1',
-      [subject_id, classe, document_type]
+      'SELECT id FROM documents WHERE subject_id = ? AND classe = ? AND categorie = ? AND is_active = 1 LIMIT 1',
+      [subject_id, classe, categorie]
     );
     if (existing && existing.length > 0) {
       return res.status(409).json({ success: false, message: 'Un document existe déjà pour cette matière, cette classe et ce type.' });
@@ -142,7 +162,7 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
     const fileType = path.extname(req.file.originalname).toLowerCase().substring(1);
     
     const insertSql = `
-      INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, document_type, created_by)
+      INSERT INTO documents (id, title, description, file_name, file_path, file_type, file_size, subject_id, classe, categorie, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
@@ -156,18 +176,9 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
       fileSize,
       subject_id,
       classe,
-      document_type,
+      categorie,
       req.user.id
     ]);
-    
-    // Ajouter la catégorie si fournie
-    if (category_id) {
-      const categoryQuery = `
-        INSERT INTO document_category_links (id, document_id, category_id)
-        VALUES (?, ?, ?)
-      `;
-      await dbQuery(categoryQuery, [uuidv4(), documentId, category_id]);
-    }
     
     logger.info(`Document créé: ${title} par ${req.user.email}`);
     
@@ -285,7 +296,7 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
 // GET /api/documents - Documents pour l'élève connecté
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { subject_id, category_id, search, document_type } = req.query;
+    const { subject_id, search, categorie } = req.query;
     const userClasse = req.user.classe;
     
     if (!userClasse) {
@@ -300,17 +311,12 @@ router.get('/', authenticateToken, async (req, res) => {
       params.push(subject_id);
     }
     
-    if (document_type) {
-      whereClause += ' AND d.document_type = ?';
-      params.push(document_type);
+    if (categorie) {
+      whereClause += ' AND d.categorie = ?';
+      params.push(categorie);
     }
     
     let joinCategory = '';
-    if (category_id) {
-      joinCategory = 'JOIN document_category_links dcl ON dcl.document_id = d.id';
-      whereClause += ' AND dcl.category_id = ?';
-      params.push(category_id);
-    }
     
     if (search) {
       whereClause += ' AND (d.title LIKE ? OR d.description LIKE ?)';
@@ -327,7 +333,7 @@ router.get('/', authenticateToken, async (req, res) => {
         d.file_size,
         d.download_count,
         d.created_at,
-        d.document_type,
+        d.categorie,
         s.name as subject_name,
         s.color as subject_color,
         s.icon as subject_icon

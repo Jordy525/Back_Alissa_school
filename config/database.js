@@ -25,7 +25,7 @@ const dbConfig = {
 	// SSL requis par la plupart des providers managés (AlwaysData, PlanetScale, etc.)
 	ssl: sslEnabled
 		? {
-			rejectUnauthorized: sslStrict,
+			rejectUnauthorized: false,
 			minVersion: 'TLSv1.2'
 		}
 		: undefined

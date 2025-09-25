@@ -348,14 +348,33 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
 // GET /api/documents/categories - Liste des catégories
 router.get('/categories', async (req, res) => {
   try {
+    // Vérifier que la base de données est disponible
+    if (!db) {
+      logger.error('Base de données non initialisée');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Service temporairement indisponible' 
+      });
+    }
+
     const [categories] = await db.execute(
-      'SELECT * FROM document_categories WHERE is_active = 1 ORDER BY name'
+      'SELECT id, name, description, color, is_active, created_at FROM document_categories WHERE is_active = 1 ORDER BY name'
     );
     
+    logger.info(`Récupération de ${categories.length} catégories`);
     res.json({ success: true, data: categories });
   } catch (error) {
-    logger.error('Erreur lors de la récupération des catégories:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    logger.error('Erreur lors de la récupération des catégories:', {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      sqlState: error.sqlState
+    });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la récupération des catégories',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

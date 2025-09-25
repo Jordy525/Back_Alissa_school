@@ -48,6 +48,31 @@ router.get('/', authenticateToken, requireClassSelection, asyncHandler(async (re
   }
 }));
 
+// Route publique pour récupérer toutes les matières (pour l'admin)
+// IMPORTANT: Cette route doit être définie AVANT les routes dynamiques `/:id` pour éviter les collisions
+router.get('/admin/all', async (req, res) => {
+  try {
+    const subjects = await query(
+      'SELECT id, name, description, icon, color, class_levels, total_lessons, is_active FROM subjects WHERE is_active = true ORDER BY name'
+    );
+
+    res.json({
+      success: true,
+      data: {
+        subjects: subjects
+      }
+    });
+  } catch (error) {
+    logger.logError(error, { context: 'get_all_subjects_admin' });
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Erreur lors de la récupération des matières'
+      }
+    });
+  }
+});
+
 // Obtenir une matière spécifique
 router.get('/:id', authenticateToken, requireClassSelection, asyncHandler(async (req, res) => {
   try {
@@ -283,7 +308,9 @@ router.get('/admin/all', async (req, res) => {
 
     res.json({
       success: true,
-      subjects: subjects
+      data: {
+        subjects: subjects
+      }
     });
   } catch (error) {
     logger.logError(error, { context: 'get_all_subjects_admin' });

@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
-const db = require('../config/database');
+const { query } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logger } = require('../config/logger');
 
@@ -87,7 +87,7 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
     
     params.push(parseInt(limit), offset);
     
-    const [documents] = await db.execute(query, params);
+    const documents = await query(query, params);
     
     // Compter le total
     const countQuery = `
@@ -96,7 +96,7 @@ router.get('/admin', authenticateToken, requireAdmin, async (req, res) => {
       WHERE ${whereClause}
     `;
     
-    const [countResult] = await db.execute(countQuery, params.slice(0, -2));
+    const countResult = await query(countQuery, params.slice(0, -2));
     const total = countResult[0].total;
     
     res.json({
@@ -137,7 +137,7 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
-    await db.execute(query, [
+    await query(query, [
       documentId,
       title,
       description || null,
@@ -157,7 +157,7 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
         INSERT INTO document_category_links (id, document_id, category_id)
         VALUES (?, ?, ?)
       `;
-      await db.execute(categoryQuery, [uuidv4(), documentId, category_id]);
+      await query(categoryQuery, [uuidv4(), documentId, category_id]);
     }
     
     logger.info(`Document créé: ${title} par ${req.user.email}`);
@@ -185,7 +185,14 @@ router.put('/admin/:id', authenticateToken, requireAdmin, async (req, res) => {
       WHERE id = ? AND created_by = ?
     `;
     
-    const [result] = await db.execute(query, [title, description, classe, is_active, id, req.user.id]);
+    const result = await query(query, [
+      title,
+      description,
+      classe,
+      is_active,
+      id,
+      req.user.id
+    ]);
     
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, message: 'Document non trouvé' });
@@ -204,7 +211,7 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
     const { id } = req.params;
     
     // Récupérer le chemin du fichier
-    const [documents] = await db.execute(
+    const documents = await query(
       'SELECT file_path FROM documents WHERE id = ? AND created_by = ?',
       [id, req.user.id]
     );
@@ -220,7 +227,7 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
     }
     
     // Supprimer de la base de données
-    await db.execute('DELETE FROM documents WHERE id = ?', [id]);
+    await query('DELETE FROM documents WHERE id = ?', [id]);
     
     res.json({ success: true, message: 'Document supprimé avec succès' });
   } catch (error) {
@@ -289,7 +296,7 @@ router.get('/', authenticateToken, async (req, res) => {
       ORDER BY d.created_at DESC
     `;
     
-    const [documents] = await db.execute(query, params);
+    const documents = await query(query, params);
     
     res.json({ success: true, data: documents });
   } catch (error) {
@@ -311,7 +318,7 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
       WHERE d.id = ? AND d.classe = ? AND d.is_active = 1
     `;
     
-    const [documents] = await db.execute(query, [id, userClasse]);
+    const documents = await query(query, [id, userClasse]);
     
     if (documents.length === 0) {
       return res.status(404).json({ success: false, message: 'Document non trouvé' });
@@ -320,13 +327,13 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     const document = documents[0];
     
     // Enregistrer le téléchargement
-    await db.execute(
+    await query(
       'INSERT INTO document_downloads (id, document_id, user_id) VALUES (?, ?, ?)',
       [uuidv4(), id, req.user.id]
     );
     
     // Incrémenter le compteur de téléchargements
-    await db.execute(
+    await query(
       'UPDATE documents SET download_count = download_count + 1 WHERE id = ?',
       [id]
     );
@@ -348,17 +355,9 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
 // GET /api/documents/categories - Liste des catégories
 router.get('/categories', async (req, res) => {
   try {
-    // Vérifier que la base de données est disponible
-    if (!db) {
-      logger.error('Base de données non initialisée');
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Service temporairement indisponible' 
-      });
-    }
-
-    const [categories] = await db.execute(
-      'SELECT id, name, description, color, is_active, created_at FROM document_categories WHERE is_active = 1 ORDER BY name'
+    // Limiter aux deux catégories demandées pour l'instant
+    const categories = await query(
+      "SELECT id, name, description, color, is_active, created_at FROM document_categories WHERE is_active = 1 AND name IN ('Manuels scolaires','Méthodologies') ORDER BY name"
     );
     
     logger.info(`Récupération de ${categories.length} catégories`);
@@ -385,7 +384,7 @@ router.get('/categories', async (req, res) => {
 // GET /api/documents/stats - Statistiques (admin)
 router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const [stats] = await db.execute(`
+    const stats = await query(`
       SELECT 
         classe,
         COUNT(*) as total_documents,

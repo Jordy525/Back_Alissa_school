@@ -1,3 +1,7 @@
+-- Suppression de l'unique constraint empêchant plusieurs documents par (subject_id, classe, categorie)
+ALTER TABLE `documents` 
+  DROP INDEX `uniq_doc`;
+
 -- phpMyAdmin SQL Dump
 -- version 5.2.2
 -- https://www.phpmyadmin.net/

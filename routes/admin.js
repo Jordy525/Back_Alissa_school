@@ -9,13 +9,20 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logger } = require('../config/logger');
 
 // Configuration Multer pour l'upload de fichiers
+const DEFAULT_UPLOAD_DIR = path.join(__dirname, '../uploads/documents');
+const UPLOAD_DIR = process.env.UPLOAD_DIR || DEFAULT_UPLOAD_DIR;
+try {
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+  logger.info('[ADMIN_UPLOAD] Dossier upload initialisé', { UPLOAD_DIR, DEFAULT_UPLOAD_DIR, cwd: process.cwd(), __dirname });
+} catch (e) {
+  logger.error('[ADMIN_UPLOAD] Erreur création dossier upload', { message: e?.message, stack: e?.stack, UPLOAD_DIR });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../uploads/documents');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
+    cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
     const uniqueName = `${uuidv4()}-${file.originalname}`;

@@ -8,6 +8,23 @@ const { query: dbQuery, transaction } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logger } = require('../config/logger');
 
+// Chemin d'upload configurable
+const DEFAULT_UPLOAD_DIR = path.join(__dirname, '../uploads/documents');
+const UPLOAD_DIR = process.env.UPLOAD_DIR || DEFAULT_UPLOAD_DIR;
+try {
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+  logger.info('[DOCS_UPLOAD] Dossier upload initialisé', {
+    UPLOAD_DIR,
+    DEFAULT_UPLOAD_DIR,
+    cwd: process.cwd(),
+    __dirname
+  });
+} catch (e) {
+  logger.error('[DOCS_UPLOAD] Erreur création dossier upload', { message: e?.message, stack: e?.stack, UPLOAD_DIR });
+}
+
 // Configuration Multer pour l'upload de fichiers
 // Utilitaire: assainir les noms de fichiers (supprime accents/caractères spéciaux)
 const sanitizeFilename = (name) => {
@@ -26,11 +43,7 @@ const sanitizeFilename = (name) => {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../uploads/documents');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
+    cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
     const safeOriginal = sanitizeFilename(file.originalname);
@@ -148,15 +161,6 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
       return res.status(400).json({ success: false, message: 'Titre, matière et classe requis' });
     }
     
-    // Empêcher les doublons par (subject_id, classe, document_type)
-    const existing = await dbQuery(
-      'SELECT id FROM documents WHERE subject_id = ? AND classe = ? AND categorie = ? AND is_active = 1 LIMIT 1',
-      [subject_id, classe, categorie]
-    );
-    if (existing && existing.length > 0) {
-      return res.status(409).json({ success: false, message: 'Un document existe déjà pour cette matière, cette classe et ce type.' });
-    }
-
     const documentId = uuidv4();
     const fileSize = req.file.size;
     const fileType = path.extname(req.file.originalname).toLowerCase().substring(1);

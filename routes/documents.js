@@ -221,8 +221,8 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
     
     // Récupérer le chemin du fichier
     const documents = await dbQuery(
-      'SELECT file_path FROM documents WHERE id = ? AND created_by = ?',
-      [id, req.user.id]
+      'SELECT file_path FROM documents WHERE id = ? LIMIT 1',
+      [id]
     );
     
     if (documents.length === 0) {
@@ -235,7 +235,8 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
       fs.unlinkSync(filePath);
     }
     
-    // Supprimer de la base de données
+    // Supprimer les liens de catégories puis le document
+    await dbQuery('DELETE FROM document_category_links WHERE document_id = ?', [id]);
     await dbQuery('DELETE FROM documents WHERE id = ?', [id]);
     
     res.json({ success: true, message: 'Document supprimé avec succès' });
@@ -318,16 +319,18 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/:id/download', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userClasse = req.user.classe;
+    const userClasse = req.user && req.user.classe ? req.user.classe : null;
+    const isAdminUser = req.user && (req.user.role === 'admin' || req.user.role === 'super_admin' || req.user.is_admin);
     
-    const downloadSql = `
+    const baseSql = `
       SELECT d.*, s.name as subject_name
       FROM documents d
       JOIN subjects s ON d.subject_id = s.id
-      WHERE d.id = ? AND d.classe = ? AND d.is_active = 1
-    `;
-    
-    const documents = await dbQuery(downloadSql, [id, userClasse]);
+      WHERE d.id = ? AND d.is_active = 1`;
+
+    const documents = userClasse && !isAdminUser
+      ? await dbQuery(baseSql + ' AND d.classe = ?', [id, userClasse])
+      : await dbQuery(baseSql, [id]);
     
     if (documents.length === 0) {
       return res.status(404).json({ success: false, message: 'Document non trouvé' });

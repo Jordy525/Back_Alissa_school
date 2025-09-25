@@ -307,6 +307,23 @@ router.get('/', authenticateToken, async (req, res) => {
     let params = [userClasse];
     
     if (subject_id) {
+      // Vérifier que l'utilisateur a bien sélectionné cette matière
+      try {
+        const userRows = await dbQuery('SELECT matieres FROM users WHERE id = ? LIMIT 1', [req.user.id]);
+        if (userRows && userRows.length > 0 && userRows[0].matieres) {
+          const raw = userRows[0].matieres;
+          let selected = [];
+          try { selected = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { selected = []; }
+          const subjectRows = await dbQuery('SELECT name FROM subjects WHERE id = ? LIMIT 1', [subject_id]);
+          const subjectName = subjectRows && subjectRows[0] ? String(subjectRows[0].name).toLowerCase() : '';
+          const normalized = (Array.isArray(selected) ? selected : []).map(v => String(v).toLowerCase());
+          if (normalized.length > 0 && !(normalized.includes(String(subject_id).toLowerCase()) || (subjectName && normalized.includes(subjectName)))) {
+            return res.json({ success: true, data: [] });
+          }
+        }
+      } catch (e) {
+        // En cas d'erreur de lecture, on ne bloque pas mais on continue avec le filtre
+      }
       whereClause += ' AND d.subject_id = ?';
       params.push(subject_id);
     }

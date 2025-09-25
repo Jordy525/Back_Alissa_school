@@ -431,7 +431,11 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     const document = documents[0];
 
     // Pour les méthodologies PDF (ou si forceInline), servir en inline comme les livres
-    const shouldInline = forceInline || (document?.categorie === 'methodology' && String(document?.file_type).toLowerCase() === 'pdf');
+    const category = String(document?.categorie || '').toLowerCase();
+    const storedType = String(document?.file_type || '').toLowerCase();
+    const filenameExt = path.extname(document?.file_name || document?.file_path || '').toLowerCase().replace('.', '');
+    const isPdf = storedType === 'pdf' || storedType === 'application/pdf' || filenameExt === 'pdf';
+    const shouldInline = forceInline || (category === 'methodology' && isPdf);
 
     if (shouldInline) {
       const resolvedPath = path.resolve(document.file_path);

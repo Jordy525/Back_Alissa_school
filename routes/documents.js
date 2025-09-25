@@ -410,6 +410,7 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/:id/download', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const forceInline = String(req.query.inline || '').toLowerCase() === '1' || String(req.query.disposition || '').toLowerCase() === 'inline';
     const userClasse = req.user && req.user.classe ? req.user.classe : null;
     const isAdminUser = req.user && (req.user.role === 'admin' || req.user.role === 'super_admin' || req.user.is_admin);
     
@@ -429,7 +430,32 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     
     const document = documents[0];
 
-    // Envoyer le fichier et mettre à jour la DB uniquement si succès
+    // Pour les méthodologies PDF (ou si forceInline), servir en inline comme les livres
+    const shouldInline = forceInline || (document?.categorie === 'methodology' && String(document?.file_type).toLowerCase() === 'pdf');
+
+    if (shouldInline) {
+      const resolvedPath = path.resolve(document.file_path);
+      if (!fs.existsSync(resolvedPath)) {
+        logger.error('[DOCS_DOWNLOAD->INLINE] Fichier introuvable', { id, path: resolvedPath });
+        return res.status(404).json({ success: false, message: 'Fichier introuvable' });
+      }
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.file_name)}"`);
+      return res.sendFile(resolvedPath, async (err) => {
+        if (err) {
+          logger.error('[DOCS_DOWNLOAD->INLINE] Erreur sendFile', { message: err.message, code: err.code, path: resolvedPath });
+          return res.status(500).json({ success: false, message: 'Erreur lors de l\'envoi du fichier' });
+        }
+        try {
+          await dbQuery('INSERT INTO document_downloads (id, document_id, user_id) VALUES (?, ?, ?)', [uuidv4(), id, req.user.id]);
+          await dbQuery('UPDATE documents SET download_count = download_count + 1 WHERE id = ?', [id]);
+        } catch (e) {
+          logger.error('Erreur post-serve inline:', e);
+        }
+      });
+    }
+
+    // Sinon, comportement par défaut: téléchargement
     res.download(document.file_path, document.file_name, async (err) => {
       if (err) {
         logger.error('Business Error', {

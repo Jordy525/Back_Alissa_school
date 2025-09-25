@@ -297,9 +297,20 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { subject_id, search, categorie } = req.query;
-    const userClasse = req.user.classe;
+    const userClasse = req.user.classe || req.user.selectedClass || null;
+
+    logger.info('📚 [DOCS_LIST] Requête documents', {
+      userId: req.user?.id,
+      classeFromToken: req.user?.classe,
+      selectedClass: req.user?.selectedClass,
+      usedClasse: userClasse,
+      subject_id,
+      categorie,
+      search
+    });
     
     if (!userClasse) {
+      logger.warn('[DOCS_LIST] Classe non définie pour utilisateur', { userId: req.user?.id });
       return res.status(400).json({ success: false, message: 'Classe non définie' });
     }
     
@@ -317,12 +328,14 @@ router.get('/', authenticateToken, async (req, res) => {
           const subjectRows = await dbQuery('SELECT name FROM subjects WHERE id = ? LIMIT 1', [subject_id]);
           const subjectName = subjectRows && subjectRows[0] ? String(subjectRows[0].name).toLowerCase() : '';
           const normalized = (Array.isArray(selected) ? selected : []).map(v => String(v).toLowerCase());
-          if (normalized.length > 0 && !(normalized.includes(String(subject_id).toLowerCase()) || (subjectName && normalized.includes(subjectName)))) {
+          const allowed = normalized.length === 0 || normalized.includes(String(subject_id).toLowerCase()) || (subjectName && normalized.includes(subjectName));
+          logger.info('[DOCS_LIST] Vérification matière élève', { normalized, subject_id, subjectName, allowed });
+          if (!allowed) {
             return res.json({ success: true, data: [] });
           }
         }
       } catch (e) {
-        // En cas d'erreur de lecture, on ne bloque pas mais on continue avec le filtre
+        logger.warn('[DOCS_LIST] Erreur lecture matières utilisateur, on continue', { error: e?.message });
       }
       // Résoudre subject_id si c'est un nom/slug plutôt qu'un UUID
       let resolvedSubjectId = subject_id;
@@ -338,6 +351,7 @@ router.get('/', authenticateToken, async (req, res) => {
           }
         } catch {}
       }
+      logger.info('[DOCS_LIST] subject_id résolu', { subject_id, resolvedSubjectId });
       whereClause += ' AND d.subject_id = ?';
       params.push(resolvedSubjectId);
     }
@@ -375,11 +389,15 @@ router.get('/', authenticateToken, async (req, res) => {
       ORDER BY d.created_at DESC
     `;
     
+    logger.info('[DOCS_LIST] Exécution requête', { whereClause, params, categorieUsed: categorie });
     const documents = await dbQuery(listSql, params);
     
     res.json({ success: true, data: documents });
   } catch (error) {
-    logger.error('Erreur lors de la récupération des documents:', error);
+    logger.error('Erreur lors de la récupération des documents:', {
+      message: error?.message,
+      stack: error?.stack
+    });
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });

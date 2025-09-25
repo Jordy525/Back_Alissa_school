@@ -1,3 +1,82 @@
+# Alissa School - Backend
+
+Ce backend Node.js/Express expose les APIs pour l’authentification, les documents (livres et méthodologies), les leçons, quiz, progression et fonctionnalités admin.
+
+## Prérequis
+- Node.js 18+
+- MySQL 8+ (ou compatible)
+
+## Installation
+```bash
+npm install
+```
+
+## Configuration (env)
+Créer un fichier `.env` à la racine avec au minimum:
+```
+PORT=10000
+NODE_ENV=production
+
+DB_HOST=...
+DB_PORT=3306
+DB_USER=...
+DB_PASSWORD=...
+DB_NAME=...
+
+JWT_SECRET=change_me
+
+# Chemin d’upload des documents (si non défini, fallback: src/uploads/documents)
+UPLOAD_DIR=/var/data/uploads/documents
+```
+
+Journalisation: voir `config/logger.js`. En production, des fichiers `logs/` peuvent être créés.
+
+## Lancement
+```bash
+npm start
+```
+ou en dev:
+```bash
+npm run dev
+```
+
+## Base de données et migrations
+- Les migrations SQL sont dans `migrations/`.
+- Pour autoriser plusieurs documents par matière/classe/catégorie, supprimer l’index unique si présent:
+```sql
+ALTER TABLE `documents` DROP INDEX `uniq_doc`;
+```
+
+## Uploads de documents
+- Les fichiers sont stockés sur le disque via Multer.
+- Le dossier d’upload est configurable via `UPLOAD_DIR`.
+- En environnement sans disque persistant (ex: Render gratuit), les fichiers ne survivent pas aux redeploys. Utiliser un stockage persistant ou ré‑uploader après déploiement.
+
+## Endpoints clés
+- Auth: `POST /api/auth/login`, `GET /api/auth/verify`
+- Documents (élève):
+  - `GET /api/documents?subject_id=...&categorie=(book|methodology)`
+  - `GET /api/documents/:id/view` (lecture inline, PDF)
+  - `GET /api/documents/:id/download` (téléchargement; supporte `?inline=1`)
+- Documents (admin):
+  - `GET /api/admin/documents`
+  - `POST /api/admin/documents` (multipart form-data: file, title, description, subject_id, classe, categorie)
+  - `PUT /api/admin/documents/:id`
+  - `DELETE /api/admin/documents/:id`
+  - Stats: `GET /api/admin/stats`
+
+## Sécurité
+- Authentification Bearer JWT via `Authorization: Bearer <token>`.
+- Rôles supportés: admin, super_admin, student.
+
+## Logs utiles
+- `[DOCS_LIST]` liste des documents (classe, matière, catégorie)
+- `[DOCS_VIEW]` lecture inline (vérification chemin, existence, sendFile)
+- `[ADMIN_UPLOAD]` / `[DOCS_UPLOAD]` initialisation du dossier d’upload
+
+## Dépannage rapide
+- 404 sur `/view`: vérifier `UPLOAD_DIR`, existence du fichier et logs `[DOCS_VIEW]`.
+- Téléchargement vs inline pour méthodologies: `/download?inline=1` ou `/view` (PDF requis).
 # 🚀 Alissa School - Backend API
 
 Backend Express.js pour la plateforme éducative intelligente Alissa School, développé par Alissa IA.

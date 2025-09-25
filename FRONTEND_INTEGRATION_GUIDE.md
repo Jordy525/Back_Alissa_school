@@ -1,8 +1,49 @@
-# Guide d'Intégration Frontend-Backend
+# Guide d’implémentation du tableau de bord administrateur
 
-## 🎯 **Vue d'ensemble**
+Ce guide décrit la structure du tableau de bord admin côté front et les points d’intégration backend.
 
-Ce guide explique comment intégrer le nouveau frontend avec le backend adapté. Le frontend utilise actuellement un système de stockage local (`localStorage`) qui sera remplacé par des appels API.
+## Structure UI
+- Page: `school-front-main/src/pages/Admin/AdminDashboard.tsx`
+- Onglets:
+  - Vue d’ensemble (statistiques + actions rapides navigantes)
+  - Gestion des élèves
+  - Gestion des documents (`DocumentsPage`)
+  - Configuration (inclut le bouton “Se déconnecter”)
+
+## Données et endpoints
+- Statistiques générales: `GET /api/admin/stats`
+- Élèves:
+  - Liste: `GET /api/admin/students?search=&classe=&page=&limit=`
+  - Modification: `PUT /api/admin/students/:id`
+  - Suppression: `DELETE /api/admin/students/:id`
+- Documents (admin):
+  - Liste: `GET /api/admin/documents`
+  - Création: `POST /api/admin/documents` (multipart: file, title, description, subject_id, classe, categorie)
+  - Mise à jour: `PUT /api/admin/documents/:id`
+  - Suppression: `DELETE /api/admin/documents/:id`
+
+## Documents côté élève
+- Liste filtrée: `GET /api/documents?subject_id=...&categorie=(book|methodology)`
+- Lecture inline (PDF): `GET /api/documents/:id/view?token=...`
+- Téléchargement: `GET /api/documents/:id/download` (ou `?inline=1` pour inline)
+
+## Authentification
+- Contexte: `src/contexts/AuthContext.tsx` (front)
+- Token JWT en `Authorization: Bearer <token>` (front → back)
+- Bouton de déconnexion: onglet Configuration (front) → `logout()` du contexte
+
+## Stockage des fichiers
+- Côté back, le chemin d’upload est configurable via `UPLOAD_DIR`.
+- En environnement non persistant, ré‑uploader après redeploy, ou utiliser un stockage objet.
+
+## Navigation et actions
+- Les “Actions rapides” de la vue d’ensemble déclenchent `setActiveTab(...)` pour naviguer vers l’onglet cible.
+
+## Débogage
+- Vérifier les logs:
+  - `[DOCS_LIST]` lors des listes
+  - `[DOCS_VIEW]` pour l’inline
+  - `[ADMIN_UPLOAD]`/`[DOCS_UPLOAD]` pour l’initialisation du dossier
 
 ## 🗄️ **Base de Données**
 

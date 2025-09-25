@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
-const { query: dbQuery } = require('../config/database');
+const { query: dbQuery, transaction } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logger } = require('../config/logger');
 
@@ -183,28 +183,57 @@ router.post('/admin', authenticateToken, requireAdmin, upload.single('file'), as
 });
 
 // PUT /api/documents/admin/:id - Modifier un document (admin)
-router.put('/admin/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/admin/:id', authenticateToken, requireAdmin, upload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, classe, is_active } = req.body;
     
-    const updateSql = `
-      UPDATE documents 
-      SET title = ?, description = ?, classe = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND created_by = ?
-    `;
-    
-    const result = await dbQuery(updateSql, [
-      title,
-      description,
-      classe,
-      is_active,
-      id,
-      req.user.id
-    ]);
-    
-    if (result.affectedRows === 0) {
+    // Récupérer l'ancien document
+    const rows = await dbQuery('SELECT file_path FROM documents WHERE id = ? LIMIT 1', [id]);
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Document non trouvé' });
+    }
+
+    // Si un nouveau fichier est fourni, remplacer les infos de fichier
+    if (req.file) {
+      const fileSize = req.file.size;
+      const fileType = path.extname(req.file.originalname).toLowerCase().substring(1);
+      const updateWithFile = `
+        UPDATE documents 
+        SET title = ?, description = ?, classe = ?, is_active = ?, 
+            file_name = ?, file_path = ?, file_type = ?, file_size = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      await dbQuery(updateWithFile, [
+        title,
+        description,
+        classe,
+        is_active,
+        req.file.originalname,
+        req.file.path,
+        fileType,
+        fileSize,
+        id
+      ]);
+      // Supprimer l'ancien fichier si présent
+      const oldPath = rows[0].file_path;
+      if (oldPath && fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch {}
+      }
+    } else {
+      const updateSql = `
+        UPDATE documents 
+        SET title = ?, description = ?, classe = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      await dbQuery(updateSql, [
+        title,
+        description,
+        classe,
+        is_active,
+        id
+      ]);
     }
     
     res.json({ success: true, message: 'Document modifié avec succès' });
@@ -235,9 +264,12 @@ router.delete('/admin/:id', authenticateToken, requireAdmin, async (req, res) =>
       fs.unlinkSync(filePath);
     }
     
-    // Supprimer les liens de catégories puis le document
-    await dbQuery('DELETE FROM document_category_links WHERE document_id = ?', [id]);
-    await dbQuery('DELETE FROM documents WHERE id = ?', [id]);
+    // Supprimer en base dans une transaction
+    await transaction(async (conn) => {
+      await conn.execute('DELETE FROM document_downloads WHERE document_id = ?', [id]);
+      await conn.execute('DELETE FROM document_category_links WHERE document_id = ?', [id]);
+      await conn.execute('DELETE FROM documents WHERE id = ?', [id]);
+    });
     
     res.json({ success: true, message: 'Document supprimé avec succès' });
   } catch (error) {
@@ -337,23 +369,31 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     }
     
     const document = documents[0];
-    
-    // Enregistrer le téléchargement
-    await dbQuery(
-      'INSERT INTO document_downloads (id, document_id, user_id) VALUES (?, ?, ?)',
-      [uuidv4(), id, req.user.id]
-    );
-    
-    // Incrémenter le compteur de téléchargements
-    await dbQuery(
-      'UPDATE documents SET download_count = download_count + 1 WHERE id = ?',
-      [id]
-    );
-    
-    // Envoyer le fichier
-    res.download(document.file_path, document.file_name);
-    
-    logger.info(`Document téléchargé: ${document.title} par ${req.user.email}`);
+
+    // Envoyer le fichier et mettre à jour la DB uniquement si succès
+    res.download(document.file_path, document.file_name, async (err) => {
+      if (err) {
+        logger.error('Business Error', {
+          error: err.message,
+          stack: err.stack,
+          context: {
+            url: req.originalUrl,
+            method: req.method,
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            userId: req.user?.id
+          }
+        });
+        return res.status(404).json({ success: false, message: 'Fichier introuvable' });
+      }
+      try {
+        await dbQuery('INSERT INTO document_downloads (id, document_id, user_id) VALUES (?, ?, ?)', [uuidv4(), id, req.user.id]);
+        await dbQuery('UPDATE documents SET download_count = download_count + 1 WHERE id = ?', [id]);
+        logger.info(`Document téléchargé: ${document.title} par ${req.user.email}`);
+      } catch (e) {
+        logger.error('Erreur post-téléchargement:', e);
+      }
+    });
   } catch (error) {
     logger.error('Erreur lors du téléchargement:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });

@@ -318,7 +318,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       try {
         const user = req.user;
         
-        logger.info('🔍 [GOOGLE_CALLBACK] Utilisateur reçu:', {
+        logger.logger.info('🔍 [GOOGLE_CALLBACK] Utilisateur reçu:', {
           id: user.id,
           email: user.email,
           name: user.name,
@@ -343,7 +343,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         // Vérifier si l'utilisateur a déjà configuré sa classe, ses matières et sa langue
         const isUserConfigured = user.classe && user.matieres && user.matieres.length > 0 && user.langue_gabonaise;
         
-        logger.info('🔍 [GOOGLE_CALLBACK] Vérification configuration utilisateur:', {
+        logger.logger.info('🔍 [GOOGLE_CALLBACK] Vérification configuration utilisateur:', {
           userId: user.id,
           classe: user.classe,
           matieres: user.matieres,
@@ -355,18 +355,18 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           // Utilisateur déjà configuré, rediriger vers le dashboard
           logger.logEvent('user_google_redirect_dashboard', { userId: user.id, classe: user.classe });
           const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`;
-          logger.info('🔄 [GOOGLE_CALLBACK] Redirection vers dashboard:', redirectUrl);
+          logger.logger.info('🔄 [GOOGLE_CALLBACK] Redirection vers dashboard:', redirectUrl);
           res.redirect(redirectUrl);
         } else {
           // Utilisateur non configuré, rediriger vers le callback pour traitement
           logger.logEvent('user_google_redirect_choose_class', { userId: user.id });
           const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`;
-          logger.info('🔄 [GOOGLE_CALLBACK] Redirection vers callback pour configuration:', redirectUrl);
+          logger.logger.info('🔄 [GOOGLE_CALLBACK] Redirection vers callback pour configuration:', redirectUrl);
           res.redirect(redirectUrl);
         }
       } catch (error) {
         logger.logError(error, { context: 'google_callback' });
-        logger.error('❌ [GOOGLE_CALLBACK] Erreur lors du callback:', error);
+        logger.logger.error('❌ [GOOGLE_CALLBACK] Erreur lors du callback:', error);
         res.redirect(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
       }
     })
